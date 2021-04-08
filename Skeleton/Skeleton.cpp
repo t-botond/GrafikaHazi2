@@ -107,7 +107,7 @@ bool pTriangle(vec3 p, vec3 a, vec3 b, vec3 c) {
 	return (2 * M_PI - 0.05f < szog && 2 * M_PI + 0.05f > szog);
 }
 struct oTriangle :public Intersectable {
-	const vec3 a,b,c;
+	const vec3 a,b,c; 
 	oTriangle(const vec3& _a, const vec3& _b, const vec3& _c, Material* _mat):a(_a), b(_b), c(_c) {
 		material = _mat;
 	}
