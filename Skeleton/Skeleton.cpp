@@ -3,31 +3,38 @@
 void printVec3(const vec3& v, const char* s = "vektor:") {
 	printf("%s (%.4f; %.4f; %.4f)\n", s, v.x, v.y, v.z);
 }
-float dodeka_vertices[] = {
-	0.0f,		0.618f,		1.618f,
-	0.0f,		-0.618f,	1.618f,
-	0.0f,		-0.618f,	-1.618f,
-	0.0f,		0.618f,		-1.618f,
-	1.618f,		0.0f,		0.618f,
+
+void SampleMirror(const vec3& N, const vec3& inDir, vec3& outDir) {
+	outDir = inDir - N * dot(N, inDir) * 2.0f;
+}
+
+const float epsilon = 0.0001f;
+
+const float dodeka_vertices[] = {
+	0.0f,		0.618f,		1.618f,		//0
+	0.0f,		-0.618f,	1.618f,		//1
+	0.0f,		-0.618f,	-1.618f,	//2
+	0.0f,		0.618f,		-1.618f,	//3
+	1.618f,		0.0f,		0.618f,		//4
 	-1.618f,	0.0f,		0.618f,
-	-1.618f,	0.0f,		-0.618f,
+	-1.618f,	0.0f,		-0.618f,	//6
 	1.618f,		0.0f,		-0.618f,
-	0.618f,		1.618f,		0.0f,
+	0.618f,		1.618f,		0.0f,		//8
 	-0.618f,	1.618f,		0.0f,
-	-0.618f,	-1.618f,	0.0f,
+	-0.618f,	-1.618f,	0.0f,		//10
 	0.618f,		-1.618f,	0.0f,
-	1.0f,		1.0f,		1.0f,
+	1.0f,		1.0f,		1.0f,		//12
 	-1.0f,		1.0f,		1.0f,
-	-1.0f,		-1.0f,		1.0f,
+	-1.0f,		-1.0f,		1.0f,		//14
 	1.0f,		-1.0f,		1.0f,
-	1.0f,		-1.0f,		-1.0f,
+	1.0f,		-1.0f,		-1.0f,		//16
 	1.0f,		1.0f,		-1.0f,
 	-1.0f,		1.0f,		-1.0f,
-	-1.0f,		-1.0f,		-1.0f
+	-1.0f,		-1.0f,		-1.0f		//19
 };
 
 //0-tól indexelve
-size_t dodeka_sides[] = {
+const size_t dodeka_sides[] = {
 	0,	1,	15,	5,	13,
 	0,	12,	8,	9,	13,
 	0,	13,	5,	14,	2,
@@ -47,26 +54,22 @@ struct Material {
 	float  shininess;
 	Material(vec3 _kd, vec3 _ks, float _shininess) : ka(_kd* M_PI), kd(_kd), ks(_ks) { shininess = _shininess; }
 };
-
 struct Hit {
 	float t;
 	vec3 position, normal;
 	Material* material;
 	Hit() { t = -1; }
 };
-
 struct Ray {
 	vec3 start, dir;
 	Ray(vec3 _start, vec3 _dir) { start = _start; dir = normalize(_dir); }
 };
-
 class Intersectable {
 protected:
 	Material* material;
 public:
 	virtual Hit intersect(const Ray& ray) = 0;
 };
-
 struct Sphere : public Intersectable {
 	vec3 center;
 	float radius;
@@ -96,15 +99,14 @@ struct Sphere : public Intersectable {
 	}
 };
 
-
 bool pTriangle(vec3 p, vec3 a, vec3 b, vec3 c) {
 	a = a - p;
 	b = b - p;
 	c = c - p;
-	float szog = acosf(dot(a, b) / (length(a) * length(b))) ;
+	float szog = acosf(dot(a, b) / (length(a) * length(b)));
 	szog = szog + acosf(dot(a, c) / (length(a) * length(c)));
 	szog = szog + acosf(dot(c, b) / (length(b) * length(c)));
-	return (2 * M_PI - 0.05f < szog && 2 * M_PI + 0.05f > szog);
+	return (2 * M_PI - epsilon * 10 < szog && 2 * M_PI + epsilon * 10 > szog);
 }
 struct oTriangle :public Intersectable {
 	const vec3 a,b,c; 
@@ -113,27 +115,25 @@ struct oTriangle :public Intersectable {
 	}
 	Hit intersect(const Ray& ray) {
 		Hit hit;
-		const vec3 normal =normalize( cross(b - a, c - a));
-		if (dot(ray.dir, normal) < 0.001 && dot(ray.dir, normal) > -0.001) return hit;
-		const vec3 tmp = normalize(ray.start);
-		float t = (normal.x * (tmp.x - a.x)) + (normal.y * (tmp.y - a.y)) + (normal.z * (tmp.z - a.z));
-		float oszto =dot(normal, normalize(ray.dir));
-		t = -t / oszto;
-		vec3 dofespont = (ray.start + ray.dir * t) *2;
-		//printVec3(dofespont);
-		if (pTriangle(dofespont, a, b, c) == false)return hit;
+		const vec3 n = cross(c - a, b - a);
+		const float t = (dot((a - ray.start), n)) / dot(ray.dir, n);
+		if (t < 0) return hit;
+		vec3 p = ray.start + ray.dir * t;
+		if (dot(cross((c - a), (p - a)), n) <= 0) return hit;
+		if (dot(cross((b - c), (p - c)), n) <= 0) return hit;
+		if (dot(cross((a - b), (p - b)), n) <= 0) return hit;
 		hit.t = t;
-		hit.position = dofespont;
-		hit.normal = -normalize(ray.dir);
+		hit.position = p;
+		SampleMirror(n, normalize(ray.dir), hit.normal);
+		hit.normal = normalize(hit.normal);
 		hit.material = material;
 		return hit;
 	}
 };
 
-/*
-struct Dodeka :public Intersectable {
+struct Dodeka{
+	Material* material;
 	float vertices[20*3];
-	size_t* sides;
 	Dodeka(const vec3& eltolas, Material* _material) {
 		material = _material; 
 		for (size_t i = 0; i < 20; ++i) {
@@ -141,16 +141,40 @@ struct Dodeka :public Intersectable {
 			vertices[(i * 3) + 1] = dodeka_vertices[(i * 3) + 1] + eltolas.y;
 			vertices[(i * 3) + 2] = dodeka_vertices[(i * 3) + 2] + eltolas.z;
 		}
-		sides = dodeka_sides;
 	}
-	Hit intersect(const Ray& ray) {
-		Hit hit;
-		
-		return hit;
+
+	void build(std::vector<Intersectable*>& objects) {
+		vec3 elvart1 = vec3(0.0f, 0.618f, 1.618f);
+		vec3 elvart2 = vec3(1.0f, 1.0f, 1.0f);
+		vec3 elvart3 = vec3(0.618f, 1.618f, 0.0f);
+
+
+		vec3* kapott = getTriangleAt(2, 0);
+		printVec3(elvart1, "Elvart1:");
+		printVec3(kapott[0], "Kapott1:");
+		printVec3(elvart2, "Elvart2:");
+		printVec3(kapott[1], "Kapott2:");
+		printVec3(elvart3, "Elvart3:");
+		printVec3(kapott[2], "Kapott3:");
+
+
+
+
+
+	}
+	vec3* getTriangleAt(const size_t side, const size_t idx) {
+		vec3* ret = new vec3[3];
+		size_t v1 = dodeka_sides[side];
+		size_t v2 = dodeka_sides[side + 1 + idx];
+		size_t v3 = dodeka_sides[side + 2 + idx];
+		ret[0] = vec3(vertices[v1 * 3], vertices[(v1 * 3) + 1], vertices[(v1 * 3) + 2]);
+		ret[1] = vec3(vertices[v2 * 3], vertices[(v2 * 3) + 1], vertices[(v2 * 3) + 2]);
+		ret[2] = vec3(vertices[v3 * 3], vertices[(v3 * 3) + 1], vertices[(v3 * 3) + 2]);
+		return ret;
 	}
 };
 
-*/
+
 class Camera {
 	vec3 eye, lookat, right, up;
 public:
@@ -167,7 +191,6 @@ public:
 		return Ray(eye, dir);
 	}
 };
-
 struct Light {
 	vec3 direction;
 	vec3 Le;
@@ -178,7 +201,7 @@ struct Light {
 };
 
 float rnd() { return (float)rand() / RAND_MAX; }
-const float epsilon = 0.0001f;
+
 
 class Scene {
 	std::vector<Intersectable*> objects;
@@ -187,21 +210,30 @@ class Scene {
 	vec3 La;
 public:
 	void build() {
-		vec3 eye = vec3(0, 0, 2), vup = vec3(0, 1, 0), lookat = vec3(0, 0, 0);
+		vec3 eye = vec3(0, 0, -5), vup = vec3(0, 1, 0), lookat = vec3(0, 0, 0);
 		float fov = 45 * M_PI / 180;
 		camera.set(eye, lookat, vup, fov);
 
 		La = vec3(0.4f, 0.4f, 0.4f);
 		vec3 lightDirection(1, 1, 1), Le(2, 2, 2);
+		//vec3 lightDirection(0, 0, 0), Le(0, 0, -10);
 		lights.push_back(new Light(lightDirection, Le));
 
 		vec3 kd(0.17f, 0.35f, 1.5f);
 		vec3 ks(3.1f, 2.7f, 1.9f);
 
 		Material* material = new Material(kd, ks, 100);
+		kd=vec3(0.3f, 0.2f, 0.1f), ks=vec3(2, 2, 2);
+		Material* material2 = new Material(kd, ks, 100);
+		Dodeka d = Dodeka(vec3(0, 0, 0), material2);
+		d.build(objects);
+		
+		objects.push_back(new oTriangle(vec3(0.0f, 0.618f, 1.618f), vec3(1.0f, 1.0f, 1.0f), vec3(0.618f, 1.618f, 0.0f), material));
+		objects.push_back(new oTriangle(vec3(0.0f, 0.618f, 1.618f), vec3(0.618f, 1.618f, 0.0f), vec3(-0.618f, 1.618f, 0.0f), material));
+		objects.push_back(new oTriangle(vec3(0.0f, 0.618f, 1.618f), vec3(-0.618f, 1.618f, 0.0f), vec3(-1.0f, 1.0f, 1.0f), material));
 
-		//objects.push_back(new Sphere(vec3(0, 0, -1), 0.2f, material));
-		objects.push_back(new oTriangle(vec3(0, 1, -2), vec3(1, 0, -2), vec3(-1, 0, -2), material));
+
+
 	}
 
 	void render(std::vector<vec4>& image) {
