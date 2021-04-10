@@ -1,6 +1,6 @@
 #include "framework.h"
 
-void printVec3(const vec3& v, const char* s = "vektor:", const char* nl="\n") {
+void printVec3(const vec3& v, const char* s = "vektor:", const char* nl = "\n") {
 	printf("%s (%.4f; %.4f; %.4f)%s", s, v.x, v.y, v.z, nl);
 }
 
@@ -10,12 +10,12 @@ void SampleMirror(const vec3& N, const vec3& inDir, vec3& outDir) {
 bool forgas = false;
 const float epsilon = 0.001f;
 const float dodeka_vertices[] = {
-	0.0f,		0.618f,		1.618f,	
-	0.0f,		-0.618f,	1.618f,	
+	0.0f,		0.618f,		1.618f,
+	0.0f,		-0.618f,	1.618f,
 	0.0f,		-0.618f,	-1.618f,
 	0.0f,		0.618f,		-1.618f,
-	1.618f,		0.0f,		0.618f,	
-	-1.618f,	0.0f,		0.618f,	
+	1.618f,		0.0f,		0.618f,
+	-1.618f,	0.0f,		0.618f,
 	-1.618f,	0.0f,		-0.618f,
 	1.618f,		0.0f,		-0.618f,
 	0.618f,		1.618f,		0.0f,
@@ -32,18 +32,18 @@ const float dodeka_vertices[] = {
 	-1.0f,		-1.0f,		-1.0f
 };
 const size_t dodeka_sides[] = {
-	0,	1,	15,	4,	12,	
-	0,	12,	8,	9,	13,	
-	0,	13,	5,	14,	1,	
-	1,	14,	10,	11,	15,	
-	2,	3,	17,	7,	16,	
-	2,	16,	11,	10,	19,	
-	2,	19,	6,	18,	3,	
-	18,	9,	8,	17,	3,	
-	15,	11,	16,	7,	4,	
-	4,	7,	17,	8,	12,	
-	13,	9,	18,	6,	5,	
-	5,	6,	19,	10,	14	
+	0,	1,	15,	4,	12,
+	0,	12,	8,	9,	13,
+	0,	13,	5,	14,	1,
+	1,	14,	10,	11,	15,
+	2,	3,	17,	7,	16,
+	2,	16,	11,	10,	19,
+	2,	19,	6,	18,	3,
+	18,	9,	8,	17,	3,
+	15,	11,	16,	7,	4,
+	4,	7,	17,	8,	12,
+	13,	9,	18,	6,	5,
+	5,	6,	19,	10,	14
 };
 
 struct Material {
@@ -106,8 +106,8 @@ bool pTriangle(vec3 p, vec3 a, vec3 b, vec3 c) {
 	return (2 * M_PI - epsilon * 10 < szog && 2 * M_PI + epsilon * 10 > szog);
 }
 struct oTriangle :public Intersectable {
-	const vec3 a,b,c; 
-	oTriangle(const vec3& _a, const vec3& _b, const vec3& _c, Material* _mat):a(_a), b(_b), c(_c) {
+	const vec3 a, b, c;
+	oTriangle(const vec3& _a, const vec3& _b, const vec3& _c, Material* _mat) :a(_a), b(_b), c(_c) {
 		material = _mat;
 	}
 
@@ -129,24 +129,16 @@ struct oTriangle :public Intersectable {
 	}
 };
 
-inline vec3 normalize2(const vec3& v, float targetLength=1.0f) { return v * (targetLength / length(v)); }
+inline vec3 normalize2(const vec3& v, float targetLength = 1.0f) { return v * (targetLength / length(v)); }
 
-bool onTriangle(const Ray& ray, vec3 va, vec3 vb, vec3 vc) {
-	const vec3 n = cross(vc - va, vb - va);
-	const float t = (dot((va - ray.start), n)) / dot(ray.dir, n);
-	if (t < 0) return false;
-	vec3 p = ray.start + ray.dir * t;
-	if (dot(cross((vc - va), (p - va)), n) <= 0) return false;
-	if (dot(cross((vb - vc), (p - vc)), n) <= 0) return false;
-	if (dot(cross((va - vb), (p - vb)), n) <= 0) return false;
-	return true;
-}
-struct sTr:public oTriangle {
-	const vec3 xa, xb, xc,xd,xe;
+
+struct sTr :public oTriangle {
+	const vec3 xa, xb, xc, xd, xe;
 	sTr(const vec3& _a, const vec3& _b, const vec3& _c, Material* _mat, const vec3& _x, const vec3& _y, const vec3& _z, const vec3& _zd, const vec3& _ze) :oTriangle(_a, _b, _c, _mat), xa(_x), xb(_y), xc(_z), xd(_zd), xe(_ze) {
 	}
-	Hit intersect(const Ray& ray){
+	Hit intersect(const Ray& ray) {
 		Hit hit;
+
 		const vec3 n = cross(c - a, b - a);
 		const float t = (dot((a - ray.start), n)) / dot(ray.dir, n);
 		if (t < 0) return hit;
@@ -154,8 +146,11 @@ struct sTr:public oTriangle {
 		if (dot(cross((c - a), (p - a)), n) <= 0) return hit;
 		if (dot(cross((b - c), (p - c)), n) <= 0) return hit;
 		if (dot(cross((a - b), (p - b)), n) <= 0) return hit;
-		
+
 		if (onTriangle(ray, xa, xb, xc) || onTriangle(ray, xa, xc, xd) || onTriangle(ray, xa, xd, xe)) return hit;
+		if (onTriangle(ray, xb, xc, xd) || onTriangle(ray, xb, xd, xe) || onTriangle(ray, xb, xe, xa)) return hit;
+		if (onTriangle(ray, xc, xd, xe) || onTriangle(ray, xc, xe, xa) || onTriangle(ray, xc, xa, xb)) return hit;
+
 
 		hit.t = t;
 		hit.position = p;
@@ -163,15 +158,24 @@ struct sTr:public oTriangle {
 		hit.normal = normalize(hit.normal);
 		hit.material = material;
 		return hit;
-		
+	}
+	bool onTriangle(const Ray& ray, vec3 va, vec3 vb, vec3 vc) {
+		const vec3 n = cross(vc - va, vb - va);
+		const float t = (dot((va - ray.start), n)) / dot(ray.dir, n);
+		if (t < 0) return false;
+		vec3 p = ray.start + ray.dir * t;
+		if (dot(cross((vc - va), (p - va)), n) <= 0) return false;
+		if (dot(cross((vb - vc), (p - vc)), n) <= 0) return false;
+		if (dot(cross((va - vb), (p - vb)), n) <= 0) return false;
+		return true;
 	}
 };
-struct Dodeka{
+struct Dodeka {
 	Material* material;
-	float vertices[20*3];
+	float vertices[20 * 3];
 	float inVertices[20 * 3];
 	Dodeka(const vec3& eltolas, Material* _material) {
-		material = _material; 
+		material = _material;
 		for (size_t i = 0; i < 20; ++i) {
 			vertices[(i * 3) + 0] = dodeka_vertices[(i * 3) + 0] + eltolas.x;
 			vertices[(i * 3) + 1] = dodeka_vertices[(i * 3) + 1] + eltolas.y;
@@ -191,18 +195,9 @@ struct Dodeka{
 			vec3 e = v[4] + normalize2((v[1] - v[4]) + (v[2] - v[4]), 0.12361f);
 			vec3 kd(0.17f, 0.35f, 1.5f);
 			vec3 ks(3.1f, 2.7f, 1.9f);
-
-			//For debug
-			Material* material2 = new Material(kd, ks, 100);
-			objects.push_back(new oTriangle(a, b, c, material2));
-			objects.push_back(new oTriangle(a, c, d, material2));
-			objects.push_back(new oTriangle(a, d, e, material2));
-			//
-
 			objects.push_back(new sTr(v[0], v[1], v[2], material, a, b, c, d, e));
 			objects.push_back(new sTr(v[0], v[2], v[3], material, a, c, d, b, e));
 			objects.push_back(new sTr(v[0], v[3], v[4], material, a, d, e, b, c));
-
 			delete[] v;
 		}
 	}
@@ -251,7 +246,7 @@ public:
 	}
 	void Animate(float dt) {
 		vec3 d = eye - lookat;
-		eye = vec3(d.x * cos(dt) + d.z * sin(dt) , d.y, -d.x* sin(dt) +d.z* cos(dt) ) +lookat;
+		eye = vec3(d.x * cos(dt) + d.z * sin(dt), d.y, -d.x * sin(dt) + d.z * cos(dt)) + lookat;
 		set(eye, lookat, up, 45 * M_PI / 180);
 	}
 };
@@ -279,7 +274,7 @@ public:
 		vec3 kd(0.17f, 0.35f, 1.5f);
 		vec3 ks(3.1f, 2.7f, 1.9f);
 		Material* material = new Material(kd, ks, 100);
-		kd=vec3(0.3f, 0.2f, 0.1f), ks=vec3(2, 2, 2);
+		kd = vec3(0.3f, 0.2f, 0.1f), ks = vec3(2, 2, 2);
 		Material* material2 = new Material(vec3(0.3f, 0.2f, 0.1f), vec3(2, 2, 2), 100);
 		Dodeka d = Dodeka(vec3(1, 0, -1), material2);
 		d.build(objects);
