@@ -1,53 +1,49 @@
 #include "framework.h"
 
-void printVec3(const vec3& v, const char* s = "vektor:") {
-	printf("%s (%.4f; %.4f; %.4f)\n", s, v.x, v.y, v.z);
+void printVec3(const vec3& v, const char* s = "vektor:", const char* nl="\n") {
+	printf("%s (%.4f; %.4f; %.4f)%s", s, v.x, v.y, v.z, nl);
 }
 
 void SampleMirror(const vec3& N, const vec3& inDir, vec3& outDir) {
 	outDir = inDir - N * dot(N, inDir) * 2.0f;
 }
-
+bool forgas = false;
 const float epsilon = 0.001f;
-float zPos = 0.1f;
-
 const float dodeka_vertices[] = {
-	0.0f,		0.618f,		1.618f,		//0
-	0.0f,		-0.618f,	1.618f,		//1
-	0.0f,		-0.618f,	-1.618f,	//2
-	0.0f,		0.618f,		-1.618f,	//3
-	1.618f,		0.0f,		0.618f,		//4
-	-1.618f,	0.0f,		0.618f,		//5
-	-1.618f,	0.0f,		-0.618f,	//6
-	1.618f,		0.0f,		-0.618f,	//7
-	0.618f,		1.618f,		0.0f,		//8
-	-0.618f,	1.618f,		0.0f,		//9
-	-0.618f,	-1.618f,	0.0f,		//10
-	0.618f,		-1.618f,	0.0f,		//11
-	1.0f,		1.0f,		1.0f,		//12
-	-1.0f,		1.0f,		1.0f,		//13
-	-1.0f,		-1.0f,		1.0f,		//14
-	1.0f,		-1.0f,		1.0f,		//15
-	1.0f,		-1.0f,		-1.0f,		//16
-	1.0f,		1.0f,		-1.0f,		//17
-	-1.0f,		1.0f,		-1.0f,		//18
-	-1.0f,		-1.0f,		-1.0f		//19
+	0.0f,		0.618f,		1.618f,	
+	0.0f,		-0.618f,	1.618f,	
+	0.0f,		-0.618f,	-1.618f,
+	0.0f,		0.618f,		-1.618f,
+	1.618f,		0.0f,		0.618f,	
+	-1.618f,	0.0f,		0.618f,	
+	-1.618f,	0.0f,		-0.618f,
+	1.618f,		0.0f,		-0.618f,
+	0.618f,		1.618f,		0.0f,
+	-0.618f,	1.618f,		0.0f,
+	-0.618f,	-1.618f,	0.0f,
+	0.618f,		-1.618f,	0.0f,
+	1.0f,		1.0f,		1.0f,
+	-1.0f,		1.0f,		1.0f,
+	-1.0f,		-1.0f,		1.0f,
+	1.0f,		-1.0f,		1.0f,
+	1.0f,		-1.0f,		-1.0f,
+	1.0f,		1.0f,		-1.0f,
+	-1.0f,		1.0f,		-1.0f,
+	-1.0f,		-1.0f,		-1.0f
 };
-
-//0-tól indexelve
 const size_t dodeka_sides[] = {
-	0,	1,	15,	4,	12,	//ok
-	0,	12,	8,	9,	13,	//ok
-	0,	13,	5,	14,	1,	//ok
-	1,	14,	10,	11,	15,	//
-	2,	3,	17,	7,	16,	//
-	2,	16,	11,	10,	19,	//
-	2,	19,	6,	18,	3,	//
-	18,	9,	8,	17,	3,	//
-	15,	11,	16,	7,	4,	//
-	4,	7,	17,	8,	12,	//
-	13,	9,	18,	6,	5,	//
-	5,	6,	19,	10,	14	//
+	0,	1,	15,	4,	12,	
+	0,	12,	8,	9,	13,	
+	0,	13,	5,	14,	1,	
+	1,	14,	10,	11,	15,	
+	2,	3,	17,	7,	16,	
+	2,	16,	11,	10,	19,	
+	2,	19,	6,	18,	3,	
+	18,	9,	8,	17,	3,	
+	15,	11,	16,	7,	4,	
+	4,	7,	17,	8,	12,	
+	13,	9,	18,	6,	5,	
+	5,	6,	19,	10,	14	
 };
 
 struct Material {
@@ -114,7 +110,8 @@ struct oTriangle :public Intersectable {
 	oTriangle(const vec3& _a, const vec3& _b, const vec3& _c, Material* _mat):a(_a), b(_b), c(_c) {
 		material = _mat;
 	}
-	Hit intersect(const Ray& ray) {
+
+	virtual Hit intersect(const Ray& ray) {
 		Hit hit;
 		const vec3 n = cross(c - a, b - a);
 		const float t = (dot((a - ray.start), n)) / dot(ray.dir, n);
@@ -132,9 +129,47 @@ struct oTriangle :public Intersectable {
 	}
 };
 
+inline vec3 normalize2(const vec3& v, float targetLength=1.0f) { return v * (targetLength / length(v)); }
+
+bool onTriangle(const Ray& ray, vec3 va, vec3 vb, vec3 vc) {
+	const vec3 n = cross(vc - va, vb - va);
+	const float t = (dot((va - ray.start), n)) / dot(ray.dir, n);
+	if (t < 0) return false;
+	vec3 p = ray.start + ray.dir * t;
+	if (dot(cross((vc - va), (p - va)), n) <= 0) return false;
+	if (dot(cross((vb - vc), (p - vc)), n) <= 0) return false;
+	if (dot(cross((va - vb), (p - vb)), n) <= 0) return false;
+	return true;
+}
+struct sTr:public oTriangle {
+	const vec3 xa, xb, xc,xd,xe;
+	sTr(const vec3& _a, const vec3& _b, const vec3& _c, Material* _mat, const vec3& _x, const vec3& _y, const vec3& _z, const vec3& _zd, const vec3& _ze) :oTriangle(_a, _b, _c, _mat), xa(_x), xb(_y), xc(_z), xd(_zd), xe(_ze) {
+	}
+	Hit intersect(const Ray& ray){
+		Hit hit;
+		const vec3 n = cross(c - a, b - a);
+		const float t = (dot((a - ray.start), n)) / dot(ray.dir, n);
+		if (t < 0) return hit;
+		vec3 p = ray.start + ray.dir * t;
+		if (dot(cross((c - a), (p - a)), n) <= 0) return hit;
+		if (dot(cross((b - c), (p - c)), n) <= 0) return hit;
+		if (dot(cross((a - b), (p - b)), n) <= 0) return hit;
+		
+		if (onTriangle(ray, xa, xb, xc) || onTriangle(ray, xa, xc, xd) || onTriangle(ray, xa, xd, xe)) return hit;
+
+		hit.t = t;
+		hit.position = p;
+		SampleMirror(n, normalize(ray.dir), hit.normal);
+		hit.normal = normalize(hit.normal);
+		hit.material = material;
+		return hit;
+		
+	}
+};
 struct Dodeka{
 	Material* material;
 	float vertices[20*3];
+	float inVertices[20 * 3];
 	Dodeka(const vec3& eltolas, Material* _material) {
 		material = _material; 
 		for (size_t i = 0; i < 20; ++i) {
@@ -142,17 +177,36 @@ struct Dodeka{
 			vertices[(i * 3) + 1] = dodeka_vertices[(i * 3) + 1] + eltolas.y;
 			vertices[(i * 3) + 2] = dodeka_vertices[(i * 3) + 2] + eltolas.z;
 		}
+
 	}
 
-	void build(std::vector<Intersectable*>& objects) {
+	void build(std::vector<Intersectable*>& objects, bool kicsi = false) {
 		for (size_t side = 0; side < 12; ++side) {
-			for (size_t t = 0; t < 3; ++t) {
-				vec3* tmp = getTriangleAt(side, t);
-				objects.push_back(new oTriangle(tmp[0], tmp[1], tmp[2], material));
-				delete[] tmp;
-			}
+			vec3* v = getSide(side);
+
+			vec3 a = v[0] + normalize2((v[3] - v[0]) + (v[2] - v[0]), 0.12361f);
+			vec3 b = v[1] + normalize2((v[4] - v[1]) + (v[3] - v[1]), 0.12361f);
+			vec3 c = v[2] + normalize2((v[0] - v[2]) + (v[4] - v[2]), 0.12361f);
+			vec3 d = v[3] + normalize2((v[0] - v[3]) + (v[1] - v[3]), 0.12361f);
+			vec3 e = v[4] + normalize2((v[1] - v[4]) + (v[2] - v[4]), 0.12361f);
+			vec3 kd(0.17f, 0.35f, 1.5f);
+			vec3 ks(3.1f, 2.7f, 1.9f);
+
+			//For debug
+			Material* material2 = new Material(kd, ks, 100);
+			objects.push_back(new oTriangle(a, b, c, material2));
+			objects.push_back(new oTriangle(a, c, d, material2));
+			objects.push_back(new oTriangle(a, d, e, material2));
+			//
+
+			objects.push_back(new sTr(v[0], v[1], v[2], material, a, b, c, d, e));
+			objects.push_back(new sTr(v[0], v[2], v[3], material, a, c, d, b, e));
+			objects.push_back(new sTr(v[0], v[3], v[4], material, a, d, e, b, c));
+
+			delete[] v;
 		}
 	}
+public:
 	vec3* getTriangleAt(const size_t side, const size_t idx) {
 		vec3* ret = new vec3[3];
 		size_t v1 = dodeka_sides[(side * 5)];
@@ -161,6 +215,20 @@ struct Dodeka{
 		ret[0] = vec3(vertices[v1 * 3], vertices[(v1 * 3) + 1], vertices[(v1 * 3) + 2]);
 		ret[1] = vec3(vertices[v2 * 3], vertices[(v2 * 3) + 1], vertices[(v2 * 3) + 2]);
 		ret[2] = vec3(vertices[v3 * 3], vertices[(v3 * 3) + 1], vertices[(v3 * 3) + 2]);
+		return ret;
+	}
+	vec3* getSide(const size_t side) {
+		vec3* ret = new vec3[5];
+		size_t v1 = dodeka_sides[(side * 5)];
+		size_t v2 = dodeka_sides[(side * 5) + 1];
+		size_t v3 = dodeka_sides[(side * 5) + 2];
+		size_t v4 = dodeka_sides[(side * 5) + 3];
+		size_t v5 = dodeka_sides[(side * 5) + 4];
+		ret[0] = vec3(vertices[v1 * 3], vertices[(v1 * 3) + 1], vertices[(v1 * 3) + 2]);
+		ret[1] = vec3(vertices[v2 * 3], vertices[(v2 * 3) + 1], vertices[(v2 * 3) + 2]);
+		ret[2] = vec3(vertices[v3 * 3], vertices[(v3 * 3) + 1], vertices[(v3 * 3) + 2]);
+		ret[3] = vec3(vertices[v4 * 3], vertices[(v4 * 3) + 1], vertices[(v4 * 3) + 2]);
+		ret[4] = vec3(vertices[v5 * 3], vertices[(v5 * 3) + 1], vertices[(v5 * 3) + 2]);
 		return ret;
 	}
 };
@@ -195,7 +263,6 @@ struct Light {
 		Le = _Le;
 	}
 };
-
 class Scene {
 	std::vector<Intersectable*> objects;
 	std::vector<Light*> lights;
@@ -203,20 +270,24 @@ class Scene {
 	vec3 La;
 public:
 	void build() {
-		vec3 eye = vec3(0, 0, -5), vup = vec3(0, 1, 0), lookat = vec3(0, 0, 0);
+		vec3 eye = vec3(0, 0, 7.0f), vup = vec3(0, 1, 0), lookat = vec3(0, 0, 0);
 		float fov = 45 * M_PI / 180;
 		camera.set(eye, lookat, vup, fov);
-
 		La = vec3(0.4f, 0.4f, 0.4f);
-		vec3 lightDirection(1, 1, 1), Le(2, 2, 2);
+		vec3 lightDirection(1, 1, 1), Le(3, 3, 3);
 		lights.push_back(new Light(lightDirection, Le));
 		vec3 kd(0.17f, 0.35f, 1.5f);
 		vec3 ks(3.1f, 2.7f, 1.9f);
 		Material* material = new Material(kd, ks, 100);
 		kd=vec3(0.3f, 0.2f, 0.1f), ks=vec3(2, 2, 2);
-		Material* material2 = new Material(kd, ks, 100);
-		Dodeka d = Dodeka(vec3(0, 0, 0), material2);
+		Material* material2 = new Material(vec3(0.3f, 0.2f, 0.1f), vec3(2, 2, 2), 100);
+		Dodeka d = Dodeka(vec3(1, 0, -1), material2);
 		d.build(objects);
+		//Dodeka d1 = Dodeka(vec3(-2, 0, 0), material);
+		//d1.build(objects);
+		//objects.push_back(new sTr(vec3(), vec3(0, 1, 0), vec3(1, 0, 0), material));
+		//objects.push_back(new oTriangle(vec3(), vec3(0, 1, 0), vec3(1, 0, 0), material2));
+
 	}
 
 	void render(std::vector<vec4>& image) {
@@ -227,6 +298,7 @@ public:
 				image[Y * windowWidth + X] = vec4(color.x, color.y, color.z, 1);
 			}
 		}
+
 	}
 
 	Hit firstIntersect(Ray ray) {
@@ -350,7 +422,9 @@ void onDisplay() {
 
 // Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
-	
+	if (key == ' ') {
+		forgas = !forgas;
+	}
 }
 
 // Key of ASCII code released
@@ -368,9 +442,11 @@ void onMouseMotion(int pX, int pY) {
 
 // Idle event indicating that some time elapsed: do animation here
 void onIdle() {
-	scene.Animate(zPos);
-	std::vector<vec4> image(windowWidth * windowHeight);
-	scene.render(image);
-	fullScreenTexturedQuad = new FullScreenTexturedQuad(windowWidth, windowHeight, image);
-	glutPostRedisplay();
+	if (forgas) {
+		scene.Animate(0.1f);
+		std::vector<vec4> image(windowWidth * windowHeight);
+		scene.render(image);
+		fullScreenTexturedQuad = new FullScreenTexturedQuad(windowWidth, windowHeight, image);
+		glutPostRedisplay();
+	}
 }
