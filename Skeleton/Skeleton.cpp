@@ -69,35 +69,6 @@ protected:
 public:
 	virtual Hit intersect(const Ray& ray) = 0;
 };
-struct Sphere : public Intersectable {
-	vec3 center;
-	float radius;
-	Sphere(const vec3& _center, float _radius, Material* _material) {
-		center = _center;
-		radius = _radius;
-		material = _material;
-	}
-
-	Hit intersect(const Ray& ray) {
-		Hit hit;
-		vec3 dist = ray.start - center;
-		float a = dot(ray.dir, ray.dir);
-		float b = dot(dist, ray.dir) * 2.0f;
-		float c = dot(dist, dist) - radius * radius;
-		float discr = b * b - 4.0f * a * c;
-		if (discr < 0) return hit;
-		float sqrt_discr = sqrtf(discr);
-		float t1 = (-b + sqrt_discr) / 2.0f / a;	// t1 >= t2 for sure
-		float t2 = (-b - sqrt_discr) / 2.0f / a;
-		if (t1 <= 0) return hit;
-		hit.t = (t2 > 0) ? t2 : t1;
-		hit.position = ray.start + ray.dir * hit.t;
-		hit.normal = (hit.position - center) * (1.0f / radius);
-		hit.material = material;
-		return hit;
-	}
-};
-
 class oTriangle :public Intersectable {
 protected:
 	const vec3 a, b, c;
@@ -162,7 +133,6 @@ public:
 class Dodeka {
 	Material* material;
 	float vertices[20 * 3];
-	float inVertices[20 * 3];
 public:
 	Dodeka(const vec3& eltolas, Material* _material) {
 		material = _material;
@@ -359,47 +329,31 @@ FullScreenTexturedQuad* fullScreenTexturedQuad;
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 	scene.build();
-
 	std::vector<vec4> image(windowWidth * windowHeight);
 	long timeStart = glutGet(GLUT_ELAPSED_TIME);
 	scene.render(image);
 	long timeEnd = glutGet(GLUT_ELAPSED_TIME);
 	printf("Rendering time: %d milliseconds\n", (timeEnd - timeStart));
-
-	// copy image to GPU as a texture
 	fullScreenTexturedQuad = new FullScreenTexturedQuad(windowWidth, windowHeight, image);
-
-	// create program for the GPU
 	gpuProgram.create(vertexSource, fragmentSource, "fragmentColor");
 }
 
-// Window has become invalid: Redraw
 void onDisplay() {
 	fullScreenTexturedQuad->Draw();
-	glutSwapBuffers();									// exchange the two buffers
+	glutSwapBuffers();
 }
-
-// Key of ASCII code pressed
 void onKeyboard(unsigned char key, int pX, int pY) {
 	if (key == ' ') {
 		forgas = !forgas;
 	}
 }
-
-// Key of ASCII code released
 void onKeyboardUp(unsigned char key, int pX, int pY) {
 
 }
-
-// Mouse click event
 void onMouse(int button, int state, int pX, int pY) {
 }
-
-// Move mouse with key pressed
 void onMouseMotion(int pX, int pY) {
 }
-
-// Idle event indicating that some time elapsed: do animation here
 void onIdle() {
 	if (forgas) {
 		scene.Animate(0.1f);
