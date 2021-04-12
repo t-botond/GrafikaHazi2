@@ -4,8 +4,10 @@ void printVec3(const vec3& v, const char* s = "vektor:", const char* nl = "\n") 
 	printf("%s (%.4f; %.4f; %.4f)%s", s, v.x, v.y, v.z, nl);
 }
 
-void SampleMirror(const vec3& N, const vec3& inDir, vec3& outDir) {
-	outDir = inDir - N * dot(N, inDir) * 2.0f;
+inline vec3 normalize2(const vec3& v, float targetLength = 1.0f) { return v * (targetLength / length(v)); }
+
+vec3 tukor(const vec3& n, const vec3& vin) {
+	return vin - n * dot(n, vin) * 2.0f;
 }
 bool forgas = false;
 const float epsilon = 0.001f;
@@ -96,21 +98,13 @@ struct Sphere : public Intersectable {
 	}
 };
 
-bool pTriangle(vec3 p, vec3 a, vec3 b, vec3 c) {
-	a = a - p;
-	b = b - p;
-	c = c - p;
-	float szog = acosf(dot(a, b) / (length(a) * length(b)));
-	szog = szog + acosf(dot(a, c) / (length(a) * length(c)));
-	szog = szog + acosf(dot(c, b) / (length(b) * length(c)));
-	return (2 * M_PI - epsilon * 10 < szog && 2 * M_PI + epsilon * 10 > szog);
-}
-struct oTriangle :public Intersectable {
+class oTriangle :public Intersectable {
+protected:
 	const vec3 a, b, c;
+public:
 	oTriangle(const vec3& _a, const vec3& _b, const vec3& _c, Material* _mat) :a(_a), b(_b), c(_c) {
 		material = _mat;
 	}
-
 	virtual Hit intersect(const Ray& ray) {
 		Hit hit;
 		const vec3 n = cross(c - a, b - a);
@@ -122,23 +116,21 @@ struct oTriangle :public Intersectable {
 		if (dot(cross((a - b), (p - b)), n) <= 0) return hit;
 		hit.t = t;
 		hit.position = p;
-		SampleMirror(n, normalize(ray.dir), hit.normal);
-		hit.normal = normalize(hit.normal);
+		hit.normal=normalize(tukor(n, normalize(ray.dir)));
 		hit.material = material;
 		return hit;
 	}
 };
 
-inline vec3 normalize2(const vec3& v, float targetLength = 1.0f) { return v * (targetLength / length(v)); }
 
 
-struct sTr :public oTriangle {
+class sTr :public oTriangle {
+protected:
 	const vec3 xa, xb, xc, xd, xe;
-	sTr(const vec3& _a, const vec3& _b, const vec3& _c, Material* _mat, const vec3& _x, const vec3& _y, const vec3& _z, const vec3& _zd, const vec3& _ze) :oTriangle(_a, _b, _c, _mat), xa(_x), xb(_y), xc(_z), xd(_zd), xe(_ze) {
-	}
+public:
+	sTr(const vec3& _a, const vec3& _b, const vec3& _c, Material* _mat, const vec3& _x, const vec3& _y, const vec3& _z, const vec3& _zd, const vec3& _ze) :oTriangle(_a, _b, _c, _mat), xa(_x), xb(_y), xc(_z), xd(_zd), xe(_ze) {}
 	Hit intersect(const Ray& ray) {
 		Hit hit;
-
 		const vec3 n = cross(c - a, b - a);
 		const float t = (dot((a - ray.start), n)) / dot(ray.dir, n);
 		if (t < 0) return hit;
@@ -146,15 +138,12 @@ struct sTr :public oTriangle {
 		if (dot(cross((c - a), (p - a)), n) <= 0) return hit;
 		if (dot(cross((b - c), (p - c)), n) <= 0) return hit;
 		if (dot(cross((a - b), (p - b)), n) <= 0) return hit;
-
 		if (onTriangle(ray, xa, xb, xc) || onTriangle(ray, xa, xc, xd) || onTriangle(ray, xa, xd, xe)) return hit;
 		if (onTriangle(ray, xb, xc, xd) || onTriangle(ray, xb, xd, xe) || onTriangle(ray, xb, xe, xa)) return hit;
 		if (onTriangle(ray, xc, xd, xe) || onTriangle(ray, xc, xe, xa) || onTriangle(ray, xc, xa, xb)) return hit;
-
-
 		hit.t = t;
 		hit.position = p;
-		SampleMirror(n, normalize(ray.dir), hit.normal);
+		hit.normal = tukor(n, normalize(ray.dir));
 		hit.normal = normalize(hit.normal);
 		hit.material = material;
 		return hit;
@@ -170,10 +159,11 @@ struct sTr :public oTriangle {
 		return true;
 	}
 };
-struct Dodeka {
+class Dodeka {
 	Material* material;
 	float vertices[20 * 3];
 	float inVertices[20 * 3];
+public:
 	Dodeka(const vec3& eltolas, Material* _material) {
 		material = _material;
 		for (size_t i = 0; i < 20; ++i) {
@@ -181,49 +171,27 @@ struct Dodeka {
 			vertices[(i * 3) + 1] = dodeka_vertices[(i * 3) + 1] + eltolas.y;
 			vertices[(i * 3) + 2] = dodeka_vertices[(i * 3) + 2] + eltolas.z;
 		}
-
 	}
-
-	void build(std::vector<Intersectable*>& objects, bool kicsi = false) {
+	void build(std::vector<Intersectable*>& objects) {
 		for (size_t side = 0; side < 12; ++side) {
 			vec3* v = getSide(side);
-
 			vec3 a = v[0] + normalize2((v[3] - v[0]) + (v[2] - v[0]), 0.12361f);
 			vec3 b = v[1] + normalize2((v[4] - v[1]) + (v[3] - v[1]), 0.12361f);
 			vec3 c = v[2] + normalize2((v[0] - v[2]) + (v[4] - v[2]), 0.12361f);
 			vec3 d = v[3] + normalize2((v[0] - v[3]) + (v[1] - v[3]), 0.12361f);
 			vec3 e = v[4] + normalize2((v[1] - v[4]) + (v[2] - v[4]), 0.12361f);
-			vec3 kd(0.17f, 0.35f, 1.5f);
-			vec3 ks(3.1f, 2.7f, 1.9f);
 			objects.push_back(new sTr(v[0], v[1], v[2], material, a, b, c, d, e));
 			objects.push_back(new sTr(v[0], v[2], v[3], material, a, c, d, b, e));
 			objects.push_back(new sTr(v[0], v[3], v[4], material, a, d, e, b, c));
 			delete[] v;
 		}
 	}
-public:
-	vec3* getTriangleAt(const size_t side, const size_t idx) {
-		vec3* ret = new vec3[3];
-		size_t v1 = dodeka_sides[(side * 5)];
-		size_t v2 = dodeka_sides[(side * 5) + 1 + idx];
-		size_t v3 = dodeka_sides[(side * 5) + 2 + idx];
-		ret[0] = vec3(vertices[v1 * 3], vertices[(v1 * 3) + 1], vertices[(v1 * 3) + 2]);
-		ret[1] = vec3(vertices[v2 * 3], vertices[(v2 * 3) + 1], vertices[(v2 * 3) + 2]);
-		ret[2] = vec3(vertices[v3 * 3], vertices[(v3 * 3) + 1], vertices[(v3 * 3) + 2]);
-		return ret;
-	}
 	vec3* getSide(const size_t side) {
 		vec3* ret = new vec3[5];
-		size_t v1 = dodeka_sides[(side * 5)];
-		size_t v2 = dodeka_sides[(side * 5) + 1];
-		size_t v3 = dodeka_sides[(side * 5) + 2];
-		size_t v4 = dodeka_sides[(side * 5) + 3];
-		size_t v5 = dodeka_sides[(side * 5) + 4];
-		ret[0] = vec3(vertices[v1 * 3], vertices[(v1 * 3) + 1], vertices[(v1 * 3) + 2]);
-		ret[1] = vec3(vertices[v2 * 3], vertices[(v2 * 3) + 1], vertices[(v2 * 3) + 2]);
-		ret[2] = vec3(vertices[v3 * 3], vertices[(v3 * 3) + 1], vertices[(v3 * 3) + 2]);
-		ret[3] = vec3(vertices[v4 * 3], vertices[(v4 * 3) + 1], vertices[(v4 * 3) + 2]);
-		ret[4] = vec3(vertices[v5 * 3], vertices[(v5 * 3) + 1], vertices[(v5 * 3) + 2]);
+		for (size_t i = 0; i < 5; ++i) {
+			size_t v = dodeka_sides[(side * 5) + i];
+			ret[i] = vec3(vertices[v * 3], vertices[(v * 3) + 1], vertices[(v * 3) + 2]);
+		}
 		return ret;
 	}
 };
@@ -276,12 +244,8 @@ public:
 		Material* material = new Material(kd, ks, 100);
 		kd = vec3(0.3f, 0.2f, 0.1f), ks = vec3(2, 2, 2);
 		Material* material2 = new Material(vec3(0.3f, 0.2f, 0.1f), vec3(2, 2, 2), 100);
-		Dodeka d = Dodeka(vec3(1, 0, -1), material2);
+		Dodeka d = Dodeka(vec3(), material2);
 		d.build(objects);
-		//Dodeka d1 = Dodeka(vec3(-2, 0, 0), material);
-		//d1.build(objects);
-		//objects.push_back(new sTr(vec3(), vec3(0, 1, 0), vec3(1, 0, 0), material));
-		//objects.push_back(new oTriangle(vec3(), vec3(0, 1, 0), vec3(1, 0, 0), material2));
 
 	}
 
