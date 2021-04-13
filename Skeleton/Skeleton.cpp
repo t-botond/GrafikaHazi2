@@ -1,16 +1,15 @@
 #include "framework.h"
-
+const int MAXDEPTH = 5;
 void printVec3(const vec3& v, const char* s = "vektor:", const char* nl = "\n") {
 	printf("%s (%.4f; %.4f; %.4f)%s", s, v.x, v.y, v.z, nl);
 }
 
 inline vec3 normalize2(const vec3& v, float targetLength = 1.0f) { return v * (targetLength / length(v)); }
-
-vec3 tukor(const vec3& n, const vec3& vin) {
-	return vin - n * dot(n, vin) * 2.0f;
+inline vec3 operator/(vec3 num, vec3 denom) {
+	return vec3(num.x / denom.x, num.y / denom.y, num.z / denom.z);
 }
 bool forgas = false;
-const float epsilon = 0.001f;
+const float epsilon = 0.0001f;
 const float dodeka_vertices[] = {
 	0.0f,		0.618f,		1.618f,
 	0.0f,		-0.618f,	1.618f,
@@ -48,21 +47,47 @@ const size_t dodeka_sides[] = {
 	5,	6,	19,	10,	14
 };
 
+
+enum MaterialType {ROUGH, REFLECTIVE};
+
+//Forrás: Az elõadás videókból
 struct Material {
 	vec3 ka, kd, ks;
 	float  shininess;
-	Material(vec3 _kd, vec3 _ks, float _shininess) : ka(_kd* M_PI), kd(_kd), ks(_ks) { shininess = _shininess; }
+	vec3 F0;
+	MaterialType type;
+	Material(MaterialType t) :type(t) {}
 };
+//Forrás: Az elõadás videókból
+struct RoughMaterial : public Material {
+	RoughMaterial(vec3 _kd, vec3 _ks, float _shininess) :Material(ROUGH) {
+		ka = _kd * M_PI;
+		kd = _kd;
+		ks = _ks;
+		shininess = _shininess;
+	}
+};
+//Forrás: Az elõadás videókból
+struct ReflectiveMaterial : public Material {
+	ReflectiveMaterial(vec3 n, vec3 kappa):Material(REFLECTIVE) {
+		vec3 one(1, 1, 1);
+		F0 = ((n - one) * (n - one) + kappa * kappa) / ((n + one) * (n + one) + kappa * kappa);
+	}
+};
+
+//Forrás: Az elõadás videókból
 struct Hit {
 	float t;
 	vec3 position, normal;
 	Material* material;
 	Hit() { t = -1; }
 };
+//Forrás: Az elõadás videókból
 struct Ray {
 	vec3 start, dir;
 	Ray(vec3 _start, vec3 _dir) { start = _start; dir = normalize(_dir); }
 };
+//Forrás: Az elõadás videókból
 class Intersectable {
 protected:
 	Material* material;
@@ -87,13 +112,66 @@ public:
 		if (dot(cross((a - b), (p - b)), n) <= 0) return hit;
 		hit.t = t;
 		hit.position = p;
-		hit.normal=normalize(tukor(n, normalize(ray.dir)));
+		hit.normal = normalize(n);
 		hit.material = material;
 		return hit;
 	}
 };
 
-
+bool masodfokuKisebbGyok(float a, float b, float c, float& ret) {
+	float disk;
+	if (a+epsilon < epsilon && a-epsilon > -epsilon) {
+		if (b == 0.0f) return false;
+		ret = -(c / b);
+		return ret > 0.0f;
+	}
+	else {
+		disk = b * b - 4.0f * a * c;
+		if (disk < 0) return false;
+		float ra = ((-b + sqrtf(disk)) / (2.0f * a));
+		float rb = ((-b - sqrtf(disk)) / (2.0f * a));
+		if (ra < 0.0f && rb>0.0f) {
+			ret = rb;
+			return true;
+		}
+		if (ra > 0.0f && rb < 0.0f) {
+			ret = ra;
+			return true;
+		}
+		if (ra < 0.0f && rb < 0.0f) {
+			return false;
+		}
+		if (ra > 0.0f && rb > 0.0f) {
+			ret = (ra < rb ) ? ra : rb;
+			return true;
+		}
+		return false;
+	}
+	return false;
+}
+class KozepsoTargy : public Intersectable {
+protected:
+	vec3 params;
+public:
+	KozepsoTargy(vec3 _params, Material* _material) :params(_params) {
+		material = _material;
+		//printf("%.4f", log(exp(7)));
+	}
+	Hit intersect(const Ray& ray) {
+		Hit hit;
+		float t;
+		if (masodfokuKisebbGyok((params.x * ray.dir.x * ray.dir.x + params.y * ray.dir.y * ray.dir.y), (2 * params.x * ray.start.x * ray.dir.x + 2 * params.y * ray.start.y * ray.dir.y + params.z * ray.dir.z), (params.x * ray.start.x * ray.start.x + params.y * ray.start.y * ray.start.y + params.z * ray.start.z), t) && t>0) {
+			vec3 p = ray.start + ray.dir * t;
+			//if (length(vec3()-p) > 0.3f) return hit;
+			vec3 n = vec3(2.0f * params.x * p.x * expf(params.x * p.x * p.x + params.y * p.y * p.y - params.z * p.z), 2.0f * params.y * p.y * expf(params.x * p.x * p.x + params.y * p.y * p.y - params.z * p.z), -params.z * expf(params.x * p.x * p.x + params.y * p.y * p.y - params.z * p.z));
+			hit.t = t;
+			hit.position = p;
+			hit.normal = normalize(n);
+			hit.material = material;
+		}
+		return hit;
+	}
+};
 
 class sTr :public oTriangle {
 protected:
@@ -114,8 +192,7 @@ public:
 		if (onTriangle(ray, xc, xd, xe) || onTriangle(ray, xc, xe, xa) || onTriangle(ray, xc, xa, xb)) return hit;
 		hit.t = t;
 		hit.position = p;
-		hit.normal = tukor(n, normalize(ray.dir));
-		hit.normal = normalize(hit.normal);
+		hit.normal = normalize(n);
 		hit.material = material;
 		return hit;
 	}
@@ -131,11 +208,11 @@ public:
 	}
 };
 class Dodeka {
-	Material* material;
+	Material* oldal;
 	float vertices[20 * 3];
 public:
 	Dodeka(const vec3& eltolas, Material* _material) {
-		material = _material;
+		oldal = _material;
 		for (size_t i = 0; i < 20; ++i) {
 			vertices[(i * 3) + 0] = dodeka_vertices[(i * 3) + 0] + eltolas.x;
 			vertices[(i * 3) + 1] = dodeka_vertices[(i * 3) + 1] + eltolas.y;
@@ -150,9 +227,10 @@ public:
 			vec3 c = v[2] + normalize2((v[0] - v[2]) + (v[4] - v[2]), 0.12361f);
 			vec3 d = v[3] + normalize2((v[0] - v[3]) + (v[1] - v[3]), 0.12361f);
 			vec3 e = v[4] + normalize2((v[1] - v[4]) + (v[2] - v[4]), 0.12361f);
-			objects.push_back(new sTr(v[0], v[1], v[2], material, a, b, c, d, e));
-			objects.push_back(new sTr(v[0], v[2], v[3], material, a, c, d, b, e));
-			objects.push_back(new sTr(v[0], v[3], v[4], material, a, d, e, b, c));
+			objects.push_back(new sTr(v[0], v[1], v[2], oldal, a, b, c, d, e));
+			objects.push_back(new sTr(v[0], v[2], v[3], oldal, a, c, d, b, e));
+			objects.push_back(new sTr(v[0], v[3], v[4], oldal, a, d, e, b, c));
+
 			delete[] v;
 		}
 	}
@@ -165,12 +243,43 @@ public:
 		return ret;
 	}
 };
+struct Sphere : public Intersectable {
+	vec3 center;
+	float radius;
 
+	Sphere(const vec3& _center, float _radius, Material* _material) {
+		center = _center;
+		radius = _radius;
+		material = _material;
+	}
 
+	Hit intersect(const Ray& ray) {
+		Hit hit;
+		vec3 dist = ray.start - center;
+		float a = dot(ray.dir, ray.dir);
+		float b = dot(dist, ray.dir) * 2.0f;
+		float c = dot(dist, dist) - radius * radius;
+		float discr = b * b - 4.0f * a * c;
+		if (discr < 0) return hit;
+		float sqrt_discr = sqrtf(discr);
+		float t1 = (-b + sqrt_discr) / 2.0f / a;	// t1 >= t2 for sure
+		float t2 = (-b - sqrt_discr) / 2.0f / a;
+		if (t1 <= 0) return hit;
+		hit.t = (t2 > 0) ? t2 : t1;
+		hit.position = ray.start + ray.dir * hit.t;
+		hit.normal = (hit.position - center) * (1.0f / radius);
+		hit.material = material;
+		return hit;
+	}
+};
+
+//Forrás: Az elõadás videókból
 class Camera {
 	vec3 eye, lookat, right, up;
+	float fov;
 public:
-	void set(vec3 _eye, vec3 _lookat, vec3 vup, float fov) {
+	void set(vec3 _eye, vec3 _lookat, vec3 vup, float _fov=-1) {
+		if (_fov > 0)fov = _fov;
 		eye = _eye;
 		lookat = _lookat;
 		vec3 w = eye - lookat;
@@ -185,9 +294,10 @@ public:
 	void Animate(float dt) {
 		vec3 d = eye - lookat;
 		eye = vec3(d.x * cos(dt) + d.z * sin(dt), d.y, -d.x * sin(dt) + d.z * cos(dt)) + lookat;
-		set(eye, lookat, up, 45 * M_PI / 180);
+		set(eye, lookat, up);//, 45 * M_PI / 180
 	}
 };
+//Forrás: Az elõadás videókból
 struct Light {
 	vec3 direction;
 	vec3 Le;
@@ -196,6 +306,7 @@ struct Light {
 		Le = _Le;
 	}
 };
+//Forrás: Az elõadás videókból
 class Scene {
 	std::vector<Intersectable*> objects;
 	std::vector<Light*> lights;
@@ -203,20 +314,18 @@ class Scene {
 	vec3 La;
 public:
 	void build() {
-		vec3 eye = vec3(0, 0, 7.0f), vup = vec3(0, 1, 0), lookat = vec3(0, 0, 0);
-		float fov = 45 * M_PI / 180;
+		vec3 eye = vec3(0.0f, 0.0f, 3.8f), vup = vec3(0, 1, 0), lookat = vec3(0, 0, 0);
+		float fov = 90 * M_PI / 180;
 		camera.set(eye, lookat, vup, fov);
 		La = vec3(0.4f, 0.4f, 0.4f);
 		vec3 lightDirection(1, 1, 1), Le(3, 3, 3);
 		lights.push_back(new Light(lightDirection, Le));
-		vec3 kd(0.17f, 0.35f, 1.5f);
-		vec3 ks(3.1f, 2.7f, 1.9f);
-		Material* material = new Material(kd, ks, 100);
-		kd = vec3(0.3f, 0.2f, 0.1f), ks = vec3(2, 2, 2);
-		Material* material2 = new Material(vec3(0.3f, 0.2f, 0.1f), vec3(2, 2, 2), 100);
-		Dodeka d = Dodeka(vec3(), material2);
-		d.build(objects);
-
+		Material* sargas = new RoughMaterial(vec3(0.3f, 0.2f, 0.1f), vec3(2,2,2), 100);
+		Material* arany = new ReflectiveMaterial(vec3(0.17f,0.35f,1.5f), vec3(3.1f,2.7f,1.9f));
+		//Dodeka d = Dodeka(vec3(), sargas);
+		//d.build(objects);
+		//objects.push_back(new Sphere(vec3(), 0.30f, arany));
+		objects.push_back(new KozepsoTargy(vec3(0.1f,0.1f,0.1f),sargas));
 	}
 
 	void render(std::vector<vec4>& image) {
@@ -229,7 +338,6 @@ public:
 		}
 
 	}
-
 	Hit firstIntersect(Ray ray) {
 		Hit bestHit;
 		for (Intersectable* object : objects) {
@@ -244,18 +352,28 @@ public:
 		return false;
 	}
 	vec3 trace(Ray ray, int depth = 0) {
+		if (depth > MAXDEPTH) return La;
 		Hit hit = firstIntersect(ray);
 		if (hit.t < 0) return La;
-		vec3 outRadiance = hit.material->ka * La;
-		for (Light* light : lights) {
-			Ray shadowRay(hit.position + hit.normal * epsilon, light->direction);
-			float cosTheta = dot(hit.normal, light->direction);
-			if (cosTheta > 0 && !shadowIntersect(shadowRay)) {	// shadow computation
-				outRadiance = outRadiance + light->Le * hit.material->kd * cosTheta;
-				vec3 halfway = normalize(-ray.dir + light->direction);
-				float cosDelta = dot(hit.normal, halfway);
-				if (cosDelta > 0) outRadiance = outRadiance + light->Le * hit.material->ks * powf(cosDelta, hit.material->shininess);
+		vec3 outRadiance(0,0,0);
+		if (hit.material->type == ROUGH) {
+			outRadiance = hit.material->ka * La;
+			for (Light* light : lights) {
+				Ray shadowRay(hit.position + hit.normal * epsilon, light->direction);
+				float cosTheta = dot(hit.normal, light->direction);
+				if (cosTheta > 0 && !shadowIntersect(shadowRay)) {	// shadow computation
+					outRadiance = outRadiance + light->Le * hit.material->kd * cosTheta;
+					vec3 halfway = normalize(-ray.dir + light->direction);
+					float cosDelta = dot(hit.normal, halfway);
+					if (cosDelta > 0) outRadiance = outRadiance + light->Le * hit.material->ks * powf(cosDelta, hit.material->shininess);
+				}
 			}
+		}
+		if (hit.material->type == REFLECTIVE) {
+			vec3 reflectedDir = ray.dir - hit.normal * dot(hit.normal, ray.dir) * 2.0f;
+			float cosa = -dot(ray.dir, hit.normal);
+			vec3 F= hit.material->F0 + (vec3(1,1,1) - hit.material->F0) * pow(1- cosa, 5);
+			outRadiance = outRadiance + trace(Ray(hit.position + hit.normal * epsilon, reflectedDir), ++depth) * F;
 		}
 		return outRadiance;
 	}
@@ -294,7 +412,7 @@ const char* fragmentSource = R"(
 		fragmentColor = texture(textureUnit, texcoord); 
 	}
 )";
-
+//Forrás: Az elõadás videókból
 class FullScreenTexturedQuad {
 	unsigned int vao;	// vertex array object id and texture id
 	Texture texture;
@@ -322,10 +440,9 @@ public:
 		glDrawArrays(GL_TRIANGLE_FAN, 0, 4);	// draw two triangles forming a quad
 	}
 };
-
 FullScreenTexturedQuad* fullScreenTexturedQuad;
 
-// Initialization, create an OpenGL context
+//Forrás: Az elõadás videókból
 void onInitialization() {
 	glViewport(0, 0, windowWidth, windowHeight);
 	scene.build();
@@ -337,7 +454,7 @@ void onInitialization() {
 	fullScreenTexturedQuad = new FullScreenTexturedQuad(windowWidth, windowHeight, image);
 	gpuProgram.create(vertexSource, fragmentSource, "fragmentColor");
 }
-
+//Forrás: Az elõadás videókból
 void onDisplay() {
 	fullScreenTexturedQuad->Draw();
 	glutSwapBuffers();
