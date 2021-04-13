@@ -91,8 +91,8 @@ struct Hit {
 };
 //Forrás: Az elõadás videókból
 struct Ray {
-	vec3 start, dir, weight;
-	Ray(vec3 _start, vec3 _dir) { start = _start; dir = normalize(_dir); weight = vec3(1, 1, 1); }
+	vec3 start, dir;
+	Ray(vec3 _start, vec3 _dir) { start = _start; dir = normalize(_dir); }
 };
 //Forrás: Az elõadás videókból
 class Intersectable {
@@ -187,7 +187,6 @@ public:
 		return hit;
 	}
 };
-
 class sTr :public oTriangle {
 protected:
 	const vec3 xa, xb, xc, xd, xe;
@@ -235,7 +234,7 @@ public:
 			vertices[(i * 3) + 2] = dodeka_vertices[(i * 3) + 2] + eltolas.z;
 		}
 		//tukor = new ReflectiveMaterial(vec3(0.17f, 0.35f,1.5f), vec3(3.1f, 2.7f,1.9f));
-		tukor = new Tukor();
+		//tukor = new Tukor();
 
 	}
 	void build(std::vector<Intersectable*>& objects) {
@@ -250,9 +249,9 @@ public:
 			objects.push_back(new sTr(v[0], v[2], v[3], oldal, a, c, d, b, e));
 			objects.push_back(new sTr(v[0], v[3], v[4], oldal, a, d, e, b, c));
 
-			objects.push_back(new oTriangle(v[0], v[1], v[2], tukor));
-			objects.push_back(new oTriangle(v[0], v[2], v[3], tukor));
-			objects.push_back(new oTriangle(v[0], v[3], v[4], tukor));
+			//objects.push_back(new oTriangle(v[0], v[1], v[2], tukor));
+			//objects.push_back(new oTriangle(v[0], v[2], v[3], tukor));
+			//objects.push_back(new oTriangle(v[0], v[3], v[4], tukor));
 			delete[] v;
 		}
 	}
@@ -291,28 +290,19 @@ public:
 	}
 };
 //Forrás: Az elõadás videókból
-struct Light {
-	vec3 direction;
-	vec3 Le;
-	Light(vec3 _direction, vec3 _Le) {
-		direction = normalize(_direction);
-		Le = _Le;
-	}
-};
-//Forrás: Az elõadás videókból
 class Scene {
 	std::vector<Intersectable*> objects;
-	std::vector<Light*> lights;
 	Camera camera;
-	vec3 La;
+	vec3 La, Le, lightPosition;
 public:
 	void build() {
 		vec3 eye = vec3(0.3f, -0.8f, -0.8f), vup = vec3(0, 1, 0), lookat = vec3(0, 0, 0);
 		float fov = 90 * M_PI / 180;
 		camera.set(eye, lookat, vup, fov);
 		La = vec3(0.4f, 0.4f, 0.4f);
-		vec3 lightDirection(1, 1, 1), Le(3, 3, 3);
-		lights.push_back(new Light(lightDirection, Le));
+		Le = vec3(3, 3, 3);
+		lightPosition = vec3(0.6f, 0.5f, 0.6f);
+
 		Material* sargas = new RoughMaterial(vec3(0.3f, 0.2f, 0.1f), vec3(2,2,2), 100);
 		Material* arany = new ReflectiveMaterial(vec3(0.17f,0.35f,1.5f), vec3(3.1f,2.7f,1.9f));
 		Dodeka d = Dodeka(vec3(), sargas);
@@ -349,28 +339,26 @@ public:
 		Hit hit = firstIntersect(ray);
 
 		if (hit.t < 0) return La;
-		vec3 outRadiance(0,0,0);
+		vec3 outRadiance(0, 0, 0);
 		if (hit.material->type == ROUGH) {
 			outRadiance = hit.material->ka * La;
-			for (Light* light : lights) {
-				Ray shadowRay(hit.position + hit.normal * epsilon, light->direction);
-				float cosTheta = dot(hit.normal, light->direction);
-				if (cosTheta > 0 && !shadowIntersect(shadowRay)) {	// shadow computation
-					outRadiance = outRadiance + light->Le * hit.material->kd * cosTheta;
-					vec3 halfway = normalize(-ray.dir + light->direction);
-					float cosDelta = dot(hit.normal, halfway);
-					if (cosDelta > 0) outRadiance = outRadiance + light->Le * hit.material->ks * powf(cosDelta, hit.material->shininess);
-				}
+			vec3 lightDir = normalize(lightPosition-hit.position);
+			Ray shadowRay(hit.position + hit.normal * epsilon, lightDir);
+			float cosTheta = dot(hit.normal, lightDir);
+			if (cosTheta > 0 && !shadowIntersect(shadowRay)) {	// shadow computation
+				outRadiance = outRadiance + Le * hit.material->kd * cosTheta;
+				vec3 halfway = normalize(-ray.dir + lightDir);
+				float cosDelta = dot(hit.normal, halfway);
+				if (cosDelta > 0) outRadiance = outRadiance + Le * hit.material->ks * powf(cosDelta, hit.material->shininess);
 			}
 		}
 		if (hit.material->type == REFLECTIVE) {
 			vec3 reflectedDir = ray.dir - hit.normal * dot(hit.normal, ray.dir) * 2.0f;
 			float cosa = -dot(ray.dir, hit.normal);
-			vec3 F= hit.material->F0 + (vec3(1,1,1) - hit.material->F0) * pow(1- cosa, 5);
+			vec3 F = hit.material->F0 + (vec3(1, 1, 1) - hit.material->F0) * pow(1 - cosa, 5);
 			outRadiance = outRadiance + trace(Ray(hit.position + hit.normal * epsilon, reflectedDir), ++depth) * F;
 		}
 		if (hit.material->type == MIRROR) {
-			ray.weight *= hit.material->F0 + (vec3(1, 1, 1) - hit.material->F0) * pow(dot(-ray.dir, hit.normal), 5);
 			ray.start = hit.position + hit.normal + epsilon;
 			ray.dir = reflect(ray.dir, hit.normal);
 			outRadiance = outRadiance + trace(ray, ++depth);
