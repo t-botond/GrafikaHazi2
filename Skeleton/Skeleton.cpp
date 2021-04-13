@@ -1,13 +1,5 @@
 #include "framework.h"
 const int MAXDEPTH = 5;
-void printVec3(const vec3& v, const char* s = "vektor:", const char* nl = "\n") {
-	printf("%s (%.4f; %.4f; %.4f)%s", s, v.x, v.y, v.z, nl);
-}
-
-inline vec3 normalize2(const vec3& v, float targetLength = 1.0f) { return v * (targetLength / length(v)); }
-inline vec3 operator/(vec3 num, vec3 denom) {
-	return vec3(num.x / denom.x, num.y / denom.y, num.z / denom.z);
-}
 bool forgas = false;
 const float epsilon = 0.0001f;
 const float dodeka_vertices[] = {
@@ -46,9 +38,21 @@ const size_t dodeka_sides[] = {
 	13,	9,	18,	6,	5,
 	5,	6,	19,	10,	14
 };
+enum MaterialType { ROUGH, REFLECTIVE, MIRROR };
 
-
-enum MaterialType {ROUGH, REFLECTIVE};
+inline void printVec3(const vec3& v, const char* s = "vektor:", const char* nl = "\n") {
+	printf("%s (%.4f; %.4f; %.4f)%s", s, v.x, v.y, v.z, nl);
+}
+inline vec3 normalize2(const vec3& v, float targetLength = 1.0f) { return v * (targetLength / length(v)); }
+inline vec3 operator/(vec3 num, vec3 denom) {
+	return vec3(num.x / denom.x, num.y / denom.y, num.z / denom.z);
+}
+inline vec3 operator*=(vec3 a, vec3 b) {
+	return a * b;
+}
+vec3 reflect(const vec3& dir, const vec3& n) {
+	return dir - n * dot(n, dir) * 2.0f;
+}
 
 //Forrás: Az elõadás videókból
 struct Material {
@@ -74,6 +78,9 @@ struct ReflectiveMaterial : public Material {
 		F0 = ((n - one) * (n - one) + kappa * kappa) / ((n + one) * (n + one) + kappa * kappa);
 	}
 };
+struct Tukor :public Material {
+	Tukor() :Material(MIRROR) {}
+};
 
 //Forrás: Az elõadás videókból
 struct Hit {
@@ -84,8 +91,8 @@ struct Hit {
 };
 //Forrás: Az elõadás videókból
 struct Ray {
-	vec3 start, dir;
-	Ray(vec3 _start, vec3 _dir) { start = _start; dir = normalize(_dir); }
+	vec3 start, dir, weight;
+	Ray(vec3 _start, vec3 _dir) { start = _start; dir = normalize(_dir); weight = vec3(1, 1, 1); }
 };
 //Forrás: Az elõadás videókból
 class Intersectable {
@@ -117,38 +124,34 @@ public:
 		return hit;
 	}
 };
+struct Sphere : public Intersectable {
+	vec3 center;
+	float radius;
+	Sphere(const vec3& _center, float _radius, Material* _material) {
+		center = _center;
+		radius = _radius;
+		material = _material;
+	}
 
-bool masodfokuKisebbGyok(float a, float b, float c, float& ret) {
-	float disk;
-	if (a+epsilon < epsilon && a-epsilon > -epsilon) {
-		if (b == 0.0f) return false;
-		ret = -(c / b);
-		return ret > 0.0f;
+	Hit intersect(const Ray& ray) {
+		Hit hit;
+		vec3 dist = ray.start - center;
+		float a = dot(ray.dir, ray.dir);
+		float b = dot(dist, ray.dir) * 2.0f;
+		float c = dot(dist, dist) - radius * radius;
+		float discr = b * b - 4.0f * a * c;
+		if (discr < 0) return hit;
+		float sqrt_discr = sqrtf(discr);
+		float t1 = (-b + sqrt_discr) / 2.0f / a;	// t1 >= t2 for sure
+		float t2 = (-b - sqrt_discr) / 2.0f / a;
+		if (t1 <= 0) return hit;
+		hit.t = (t2 > 0) ? t2 : t1;
+		hit.position = ray.start + ray.dir * hit.t;
+		hit.normal = (hit.position - center) * (1.0f / radius);
+		hit.material = material;
+		return hit;
 	}
-	else {
-		disk = b * b - 4.0f * a * c;
-		if (disk < 0) return false;
-		float ra = ((-b + sqrtf(disk)) / (2.0f * a));
-		float rb = ((-b - sqrtf(disk)) / (2.0f * a));
-		if (ra < 0.0f && rb>0.0f) {
-			ret = rb;
-			return true;
-		}
-		if (ra > 0.0f && rb < 0.0f) {
-			ret = ra;
-			return true;
-		}
-		if (ra < 0.0f && rb < 0.0f) {
-			return false;
-		}
-		if (ra > 0.0f && rb > 0.0f) {
-			ret = (ra < rb ) ? ra : rb;
-			return true;
-		}
-		return false;
-	}
-	return false;
-}
+};
 class KozepsoTargy : public Intersectable {
 protected:
 	vec3 params;
@@ -159,16 +162,28 @@ public:
 	}
 	Hit intersect(const Ray& ray) {
 		Hit hit;
-		float t;
-		if (masodfokuKisebbGyok((params.x * ray.dir.x * ray.dir.x + params.y * ray.dir.y * ray.dir.y), (2 * params.x * ray.start.x * ray.dir.x + 2 * params.y * ray.start.y * ray.dir.y + params.z * ray.dir.z), (params.x * ray.start.x * ray.start.x + params.y * ray.start.y * ray.start.y + params.z * ray.start.z), t) && t>0) {
-			vec3 p = ray.start + ray.dir * t;
-			//if (length(vec3()-p) > 0.3f) return hit;
-			vec3 n = vec3(2.0f * params.x * p.x * expf(params.x * p.x * p.x + params.y * p.y * p.y - params.z * p.z), 2.0f * params.y * p.y * expf(params.x * p.x * p.x + params.y * p.y * p.y - params.z * p.z), -params.z * expf(params.x * p.x * p.x + params.y * p.y * p.y - params.z * p.z));
-			hit.t = t;
-			hit.position = p;
-			hit.normal = normalize(n);
-			hit.material = material;
+		float a = params.x * ray.dir.x * ray.dir.x + params.y * ray.dir.y * ray.dir.y;
+		float b = 2.0f * params.x * ray.start.x * ray.dir.x + 2.0f * params.y * ray.start.y * ray.dir.y - params.z * ray.dir.z;
+		float c = params.x * ray.start.x * ray.start.x + params.y * ray.start.y * ray.start.y - params.z * ray.start.z;
+
+		float discr = b * b - 4.0f * a * c;
+		if (discr < 0) return hit;
+		float sqrt_discr = sqrtf(discr);
+		float t1 = (-b + sqrt_discr) / 2.0f / a;
+		float t2 = (-b - sqrt_discr) / 2.0f / a;
+		if (t1 <= 0) return hit;
+		float t = (t2 > 0) ? t2 : t1;
+		vec3 p = ray.start + ray.dir * t;
+		if (length(vec3() - p) > 0.3f) {
+			return hit;
 		}
+		hit.t = t;
+		hit.position = p;
+		hit.normal = normalize(vec3(
+			2.0f * params.x * p.x * expf(params.x * p.x * p.x + params.y * p.y * p.y - params.z * p.z), 
+			2.0f * params.y * p.y * expf(params.x * p.x * p.x + params.y * p.y * p.y - params.z * p.z), 
+			-params.z * expf(params.x * p.x * p.x + params.y * p.y * p.y - params.z * p.z)));
+		hit.material = material;
 		return hit;
 	}
 };
@@ -210,6 +225,7 @@ public:
 class Dodeka {
 	Material* oldal;
 	float vertices[20 * 3];
+	Material* tukor;
 public:
 	Dodeka(const vec3& eltolas, Material* _material) {
 		oldal = _material;
@@ -218,6 +234,9 @@ public:
 			vertices[(i * 3) + 1] = dodeka_vertices[(i * 3) + 1] + eltolas.y;
 			vertices[(i * 3) + 2] = dodeka_vertices[(i * 3) + 2] + eltolas.z;
 		}
+		//tukor = new ReflectiveMaterial(vec3(0.17f, 0.35f,1.5f), vec3(3.1f, 2.7f,1.9f));
+		tukor = new Tukor();
+
 	}
 	void build(std::vector<Intersectable*>& objects) {
 		for (size_t side = 0; side < 12; ++side) {
@@ -231,6 +250,9 @@ public:
 			objects.push_back(new sTr(v[0], v[2], v[3], oldal, a, c, d, b, e));
 			objects.push_back(new sTr(v[0], v[3], v[4], oldal, a, d, e, b, c));
 
+			objects.push_back(new oTriangle(v[0], v[1], v[2], tukor));
+			objects.push_back(new oTriangle(v[0], v[2], v[3], tukor));
+			objects.push_back(new oTriangle(v[0], v[3], v[4], tukor));
 			delete[] v;
 		}
 	}
@@ -241,35 +263,6 @@ public:
 			ret[i] = vec3(vertices[v * 3], vertices[(v * 3) + 1], vertices[(v * 3) + 2]);
 		}
 		return ret;
-	}
-};
-struct Sphere : public Intersectable {
-	vec3 center;
-	float radius;
-
-	Sphere(const vec3& _center, float _radius, Material* _material) {
-		center = _center;
-		radius = _radius;
-		material = _material;
-	}
-
-	Hit intersect(const Ray& ray) {
-		Hit hit;
-		vec3 dist = ray.start - center;
-		float a = dot(ray.dir, ray.dir);
-		float b = dot(dist, ray.dir) * 2.0f;
-		float c = dot(dist, dist) - radius * radius;
-		float discr = b * b - 4.0f * a * c;
-		if (discr < 0) return hit;
-		float sqrt_discr = sqrtf(discr);
-		float t1 = (-b + sqrt_discr) / 2.0f / a;	// t1 >= t2 for sure
-		float t2 = (-b - sqrt_discr) / 2.0f / a;
-		if (t1 <= 0) return hit;
-		hit.t = (t2 > 0) ? t2 : t1;
-		hit.position = ray.start + ray.dir * hit.t;
-		hit.normal = (hit.position - center) * (1.0f / radius);
-		hit.material = material;
-		return hit;
 	}
 };
 
@@ -314,7 +307,7 @@ class Scene {
 	vec3 La;
 public:
 	void build() {
-		vec3 eye = vec3(0.0f, 0.0f, 3.8f), vup = vec3(0, 1, 0), lookat = vec3(0, 0, 0);
+		vec3 eye = vec3(0.3f, -0.8f, -0.8f), vup = vec3(0, 1, 0), lookat = vec3(0, 0, 0);
 		float fov = 90 * M_PI / 180;
 		camera.set(eye, lookat, vup, fov);
 		La = vec3(0.4f, 0.4f, 0.4f);
@@ -322,10 +315,10 @@ public:
 		lights.push_back(new Light(lightDirection, Le));
 		Material* sargas = new RoughMaterial(vec3(0.3f, 0.2f, 0.1f), vec3(2,2,2), 100);
 		Material* arany = new ReflectiveMaterial(vec3(0.17f,0.35f,1.5f), vec3(3.1f,2.7f,1.9f));
-		//Dodeka d = Dodeka(vec3(), sargas);
-		//d.build(objects);
+		Dodeka d = Dodeka(vec3(), sargas);
+		d.build(objects);
 		//objects.push_back(new Sphere(vec3(), 0.30f, arany));
-		objects.push_back(new KozepsoTargy(vec3(0.1f,0.1f,0.1f),sargas));
+		objects.push_back(new KozepsoTargy(vec3(0.3f,2.1f,0.1f),arany));
 	}
 
 	void render(std::vector<vec4>& image) {
@@ -354,6 +347,7 @@ public:
 	vec3 trace(Ray ray, int depth = 0) {
 		if (depth > MAXDEPTH) return La;
 		Hit hit = firstIntersect(ray);
+
 		if (hit.t < 0) return La;
 		vec3 outRadiance(0,0,0);
 		if (hit.material->type == ROUGH) {
@@ -374,6 +368,12 @@ public:
 			float cosa = -dot(ray.dir, hit.normal);
 			vec3 F= hit.material->F0 + (vec3(1,1,1) - hit.material->F0) * pow(1- cosa, 5);
 			outRadiance = outRadiance + trace(Ray(hit.position + hit.normal * epsilon, reflectedDir), ++depth) * F;
+		}
+		if (hit.material->type == MIRROR) {
+			ray.weight *= hit.material->F0 + (vec3(1, 1, 1) - hit.material->F0) * pow(dot(-ray.dir, hit.normal), 5);
+			ray.start = hit.position + hit.normal + epsilon;
+			ray.dir = reflect(ray.dir, hit.normal);
+			outRadiance = outRadiance + trace(ray, ++depth);
 		}
 		return outRadiance;
 	}
@@ -476,6 +476,7 @@ void onIdle() {
 		scene.Animate(0.1f);
 		std::vector<vec4> image(windowWidth * windowHeight);
 		scene.render(image);
+		delete fullScreenTexturedQuad;
 		fullScreenTexturedQuad = new FullScreenTexturedQuad(windowWidth, windowHeight, image);
 		glutPostRedisplay();
 	}
